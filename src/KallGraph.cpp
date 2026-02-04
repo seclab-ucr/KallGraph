@@ -233,7 +233,7 @@ Algo *performAnalysis(Value *gv, SVFIR *pag) {
     unias->BlockedNodes.insert(node);
   }
   PNwithOffset firstLayer(0, true);
-  unias->HistoryAwareStack.push(firstLayer);
+  unias->HistoryAwareStack.push(&firstLayer);
   auto pgnode = pag->getGNode(pag->getValueNode(gv));
   unias->taskNode = pgnode;
   unias->ComputeAlias(pgnode, true);
@@ -468,10 +468,10 @@ int main(int argc, char **argv) {
   }
   log_time("starting round 0", fout);
   analysis(svfModule, pag, tasks);
+  printCallGraph(OutputDir + "/callgraph0");
   size_t new_callgraph_size = getCallGraphSizeSum();
   while (SpecifyInput == "" && new_callgraph_size != callgraph_size) {
-    static int i = 1;
-    printCallGraph(OutputDir + "/callgraph" + to_string(i));
+    static int i = 0;
     log_time("starting round " + to_string(i++), fout);
     fout << "new callgraph size: " << new_callgraph_size << "\n";
     callgraph_size = new_callgraph_size;
@@ -502,6 +502,7 @@ int main(int argc, char **argv) {
     fout.flush();
     analysis(svfModule, pag, tasks);
     new_callgraph_size = getCallGraphSizeSum();
+    printCallGraph(OutputDir + "/callgraph" + to_string(i));
   }
   log_time("analysis done", fout);
   fout.close();

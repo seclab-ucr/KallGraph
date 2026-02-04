@@ -18,7 +18,7 @@ public:
 class Algo {
 public:
   unordered_set<PAGEdge *> visitedEdges;
-  stack<PNwithOffset> HistoryAwareStack;
+  stack<PNwithOffset*> HistoryAwareStack;
   map<s64_t, unordered_set<PAGNode *>> Aliases;
   SVFIR *pag;
   bool taken = false;

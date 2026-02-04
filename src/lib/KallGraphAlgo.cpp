@@ -32,7 +32,7 @@ void Algo::Prop(PAGNode *nxt, PAGEdge *eg, bool state, PAGNode *icall) {
   if (BlockedNodes.find(nxt->getId()) != BlockedNodes.end()) {
     return;
   }
-  if (visitedEdges.size() > 20) {
+  if (visitedEdges.size() > 35) {
     return;
   }
   if (eg && !visitedEdges.insert(eg).second) {
@@ -57,8 +57,10 @@ static inline bool isMemAllocFunction(const StringRef &name) {
 }
 
 void Algo::ComputeAlias(PAGNode *cur, bool state) {
-  nodeFreq[cur]++;
-  counter++;
+  if (visitedEdges.size() > 15) {
+    nodeFreq[cur]++;
+    counter++;
+  }
   auto param_it = Param2Funcs.find(cur->getId());
   if (param_it != Param2Funcs.end()) {
     depFuncs.insert(param_it->second);
@@ -79,14 +81,14 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
   }
 
   if (HistoryAwareStack.size() == 1) {
-    Aliases[HistoryAwareStack.top().offset].insert(cur);
+    Aliases[HistoryAwareStack.top()->offset].insert(cur);
   }
 
   if (cur->hasOutgoingEdges(PAGEdge::Load)) {
     for (auto edge : cur->getOutgoingEdges(PAGEdge::Load)) {
       if (HistoryAwareStack.size() > 1) {
-        auto &topItem = HistoryAwareStack.top();
-        if (topItem.offset == 0) {
+        auto topItem = HistoryAwareStack.top();
+        if (topItem->offset == 0) {
           HistoryAwareStack.pop();
           Prop(edge->getDstNode(), edge, false, nullptr);
           HistoryAwareStack.push(topItem);
@@ -96,8 +98,8 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
   }
 
   if (HistoryAwareStack.size() > 1) {
-    auto &topItem = HistoryAwareStack.top();
-    if (topItem.curFlow && topItem.offset == 0 &&
+    auto topItem = HistoryAwareStack.top();
+    if (topItem->curFlow && topItem->offset == 0 &&
         cur->hasIncomingEdges(PAGEdge::Store)) {
       for (auto edge : cur->getIncomingEdges(PAGEdge::Store)) {
         HistoryAwareStack.pop();
@@ -137,7 +139,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
       for (auto edge : cur->getOutgoingEdges(PAGEdge::Call)) {
         auto callee = SVFUtil::getCallee(
             dyn_cast<CallPE>(edge)->getCallInst()->getCallSite());
-        if (!callee && isMemAllocFunction(callee->getName())) {
+        if (callee && isMemAllocFunction(callee->getName())) {
           continue;
         }
         Prop(edge->getDstNode(), edge, false, nullptr);
@@ -153,7 +155,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
       for (auto edge : cur->getOutgoingEdges(PAGEdge::Ret)) {
         auto callee = SVFUtil::getCallee(
             dyn_cast<RetPE>(edge)->getCallInst()->getCallSite());
-        if (!callee && isMemAllocFunction(callee->getName())) {
+        if (callee && isMemAllocFunction(callee->getName())) {
           continue;
         }
         Prop(edge->getDstNode(), edge, false, nullptr);
@@ -190,7 +192,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
       for (auto edge : cur->getIncomingEdges(PAGEdge::Call)) {
         auto callee = SVFUtil::getCallee(
             dyn_cast<CallPE>(edge)->getCallInst()->getCallSite());
-        if (!callee && isMemAllocFunction(callee->getName())) {
+        if (callee && isMemAllocFunction(callee->getName())) {
           continue;
         }
         Prop(edge->getSrcNode(), edge, true, nullptr);
@@ -205,7 +207,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
       for (auto edge : cur->getIncomingEdges(PAGEdge::Ret)) {
         auto callee = SVFUtil::getCallee(
             dyn_cast<RetPE>(edge)->getCallInst()->getCallSite());
-        if (!callee && isMemAllocFunction(callee->getName())) {
+        if (callee && isMemAllocFunction(callee->getName())) {
           continue;
         }
         Prop(edge->getSrcNode(), edge, true, nullptr);
@@ -217,7 +219,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
     for (auto edge : cur->getOutgoingEdges(PAGEdge::Store)) {
       auto dstNode = edge->getDstNode();
       PNwithOffset newTypeInfo(0, false);
-      HistoryAwareStack.push(newTypeInfo);
+      HistoryAwareStack.push(&newTypeInfo);
       Prop(dstNode, edge, true, nullptr);
       HistoryAwareStack.pop();
     }
@@ -227,15 +229,15 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
     for (auto edge : cur->getIncomingEdges(PAGEdge::Load)) {
       auto srcNode = edge->getSrcNode();
       PNwithOffset newTypeInfo(0, true);
-      HistoryAwareStack.push(newTypeInfo);
+      HistoryAwareStack.push(&newTypeInfo);
       Prop(srcNode, edge, true, nullptr);
       HistoryAwareStack.pop();
     }
   }
 
   if (state && HistoryAwareStack.size() > 1) {
-    auto &topItem = HistoryAwareStack.top();
-    if (topItem.curFlow && cur->hasIncomingEdges(PAGEdge::Addr)) {
+    auto topItem = HistoryAwareStack.top();
+    if (topItem->curFlow && cur->hasIncomingEdges(PAGEdge::Addr)) {
       for (auto edge : cur->getIncomingEdges(PAGEdge::Addr)) {
         Prop(edge->getSrcNode(), edge, true, nullptr);
       }
@@ -251,7 +253,7 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
   if (state && cur->hasIncomingEdges(PAGEdge::Gep)) {
     for (auto edge : cur->getIncomingEdges(PAGEdge::Gep)) {
       if (!HistoryAwareStack.empty()) {
-        auto &topItem = HistoryAwareStack.top();
+        auto topItem = HistoryAwareStack.top();
         if (variantGep.find(edge) != variantGep.end()) {
           Prop(edge->getSrcNode(), edge, true, nullptr);
         } else if (gep2byteoffset.find(edge) != gep2byteoffset.end()) {
@@ -316,14 +318,14 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
                     needVisitDst = true;
                   }
                   if (needVisitSrc) {
-                    topItem.offset -= offset;
+                    topItem->offset -= offset;
                     Prop(dstCast->getSrcNode(), dstCast, true, nullptr);
-                    topItem.offset += offset;
+                    topItem->offset += offset;
                   }
                   if (needVisitDst) {
-                    topItem.offset -= offset;
+                    topItem->offset -= offset;
                     Prop(dstCast->getDstNode(), dstCast, false, nullptr);
-                    topItem.offset += offset;
+                    topItem->offset += offset;
                   }
                 }
               }
@@ -332,9 +334,9 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
             taken = false;
           }
           if (!alltaked) {
-            topItem.offset -= offset;
+            topItem->offset -= offset;
             Prop(edge->getSrcNode(), edge, true, nullptr);
-            topItem.offset += offset;
+            topItem->offset += offset;
           }
         }
       }
@@ -343,13 +345,13 @@ void Algo::ComputeAlias(PAGNode *cur, bool state) {
 
   if (HistoryAwareStack.size() > 1 && cur->hasOutgoingEdges(PAGEdge::Gep)) {
     for (auto edge : cur->getOutgoingEdges(PAGEdge::Gep)) {
-      auto &topItem = HistoryAwareStack.top();
+      auto topItem = HistoryAwareStack.top();
       if (variantGep.find(edge) != variantGep.end()) {
         Prop(edge->getDstNode(), edge, true, nullptr);
       } else if (gep2byteoffset.find(edge) != gep2byteoffset.end()) {
-        topItem.offset += gep2byteoffset[edge];
+        topItem->offset += gep2byteoffset[edge];
         Prop(edge->getDstNode(), edge, true, nullptr);
-        topItem.offset -= gep2byteoffset[edge];
+        topItem->offset -= gep2byteoffset[edge];
       }
     }
   }

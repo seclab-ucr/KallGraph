@@ -2,7 +2,7 @@
 #define UNIAS_UTIL_H
 
 #define THRESHOLD 10000
-#define DEFCONFIG 20
+#define DEFCONFIG 50
 #define ALLYESCONFIG 50
 
 #include "SVF-FE/LLVMUtil.h"
